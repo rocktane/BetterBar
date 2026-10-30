@@ -36,6 +36,16 @@ interaction.click(option: true)
 interaction.click(option: false)
 interaction.click(option: false)
 check(interaction.state == .hiddenShown, "after concealing all, next click reveals only Hidden")
+interaction.click(option: false, clickCount: 2)
+check(interaction.state == .hiddenShown, "second press of a double-click does not toggle Hidden back")
+interaction.click(option: true, clickCount: 2)
+check(interaction.state == .hiddenShown, "Option on second press does not reveal Always Hidden")
+interaction.click(option: false, clickCount: 3)
+check(interaction.state == .hiddenShown, "subsequent multi-click presses are ignored")
+interaction.click(option: true, clickCount: 1)
+check(interaction.state == .allShown, "only an Option single click reveals Always Hidden")
+interaction.click(option: true, clickCount: 2)
+check(interaction.state == .allShown, "Option double-click does not immediately conceal everything again")
 interactionDefaults.removePersistentDomain(forName: interactionDomain)
 
 // MARK: Allow list
@@ -73,6 +83,16 @@ check(!AppIdentity.isIdentifiable(bundleID: nil, bundlePath: "/Applications/A.ap
 check(AppIdentity.key(bundleID: nil, executableName: "tool") == "exe:tool", "key without bundle id")
 
 // MARK: Click classification
+
+for screen in NSScreen.screens {
+    let top = NSPoint(x: screen.frame.midX, y: screen.frame.maxY)
+    let probe = MenuBarGeometry.probePoints(for: top)?.first
+    check(probe == CGPoint(x: top.x, y: MenuBarGeometry.primaryHeight - screen.frame.maxY + 1),
+          "top-edge clicks probe inside the menu bar instead of the screen boundary")
+    let inside = NSPoint(x: top.x, y: top.y - 12)
+    check(MenuBarGeometry.probePoints(for: inside)?.first == CGPoint(x: inside.x, y: MenuBarGeometry.primaryHeight - inside.y),
+          "clicks inside the bar keep their actual position")
+}
 
 check(ClickClassifier.isEmptySpace([.bar]), "bar is empty")
 check(!ClickClassifier.isEmptySpace([.icon]), "icon is not empty")

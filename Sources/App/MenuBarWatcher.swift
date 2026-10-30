@@ -105,8 +105,9 @@ final class MenuBarWatcher {
         }
         let secondary = event.type == .rightMouseDown || flags.contains(.control)
         let option = flags.contains(.option)
-        // AX queries can finish out of order. Apply every click in input
-        // order, including the second press of a double-click.
+        let clickCount = event.clickCount
+        // AX queries can finish out of order. Preserve input order; the
+        // controller ignores subsequent presses in a multi-click sequence.
         let previousClick = clickTask
         clickTask = Task {
             await previousClick?.value
@@ -119,7 +120,7 @@ final class MenuBarWatcher {
                 self.pendingMenu = work
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: work)
             } else {
-                self.sections.click(option: option)
+                self.sections.click(option: option, clickCount: clickCount)
             }
         }
     }

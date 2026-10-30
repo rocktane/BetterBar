@@ -33,7 +33,11 @@ enum MenuBarGeometry {
     /// (macOS 27 reports icon frames for one display only).
     static func probePoints(for point: NSPoint) -> [CGPoint]? {
         guard let screen = menuBarScreen(at: point) else { return nil }
-        var points = [CGPoint(x: point.x, y: primaryHeight - point.y)]
+        // At the exact top edge macOS 27 can return AXWindow instead of
+        // AXMenuBar. Probe one point inside the bar, keeping x unchanged
+        // so menu titles and status icons still veto an empty-space click.
+        let probeY = min(point.y, screen.frame.maxY - 1)
+        var points = [CGPoint(x: point.x, y: primaryHeight - probeY)]
         for other in NSScreen.screens where other != screen {
             let otherY = primaryHeight - other.frame.maxY + menuBarHeight(of: other) / 2
             let xs = ClickClassifier.mirroredXs(

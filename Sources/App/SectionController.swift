@@ -63,7 +63,10 @@ final class SectionController {
 
     // MARK: State
 
-    func click(option: Bool) { setState(state.afterClick(option: option)) }
+    func click(option: Bool, clickCount: Int = 1) {
+        guard clickCount == 1 else { return }
+        setState(state.afterClick(option: option))
+    }
 
     func collapse() { setState(.collapsed) }
 
