@@ -4,7 +4,8 @@ import AppKit
 ///
 /// They are real status items so that macOS keeps their place (keyed by
 /// bundle ID and autosave name) like any other icon. Outside a Cmd-drag
-/// they have zero length: invisible, and no gap on the bar. Their frames
+/// they have zero length; app-local spacing overrides in main.swift remove
+/// AppKit's surrounding padding, leaving no gap on the bar. Their frames
 /// stay readable through Accessibility, so they bound the zones at all
 /// times. Newly created, macOS puts them left of every icon; `Arranger`
 /// then moves icons of Visible apps to their right.
