@@ -63,6 +63,8 @@ final class SectionController {
 
     // MARK: State
 
+    /// Always Hidden is revealed only by an Option-click; any other click
+    /// on empty space while it is revealed conceals everything again.
     func click(option: Bool, clickCount: Int = 1) {
         guard clickCount == 1 else { return }
         setState(state.afterClick(option: option))
@@ -187,8 +189,9 @@ final class SectionController {
     }
 
     private func handleFailure(_ error: Error) {
+        // Never release here: an unrestricted bar reveals Always Hidden. The
+        // last confirmed restriction stays held; retry the latest one.
         lastError = error.localizedDescription
-        restriction.release()
         guard retryCount < 5 else { return }
         retryCount += 1
         Task { @MainActor [weak self] in

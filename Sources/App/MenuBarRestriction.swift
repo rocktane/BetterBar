@@ -11,7 +11,8 @@ import os
 ///   (2 is the Clock, 8 is Control Center). We allow all of them: Apple's
 ///   items are managed in System Settings > Menu Bar, not here.
 /// - The newest active assertion wins, so switching state activates the new
-///   one before invalidating the old one: no flash.
+///   one and invalidates the old one only once the new one is confirmed: no
+///   flash, and a rejected activation keeps the previous restriction.
 /// - When this process exits, even with SIGKILL, MenuBarAgent drops the
 ///   restriction and every icon comes back.
 @MainActor
@@ -20,11 +21,13 @@ final class MenuBarRestriction {
     private static let frameworkPath = "/System/Library/PrivateFrameworks/MenuBarClientCore.framework/MenuBarClientCore"
     private static let systemItemIDs: [NSNumber] = (0..<64).map { NSNumber(value: $0) }
 
-    /// Called when MenuBarAgent rejects an activation.
+    /// Called when MenuBarAgent rejects the latest activation.
     var onFailure: ((Error) -> Void)?
 
-    private var current: NSObject?
-    private(set) var allowed: Set<String>?
+    private var tracker = AssertionTracker()
+    private var assertions: [Int: NSObject] = [:]
+    private var nextID = 0
+    var allowed: Set<String>? { tracker.allowed }
 
     static let isAvailable: Bool = {
         guard dlopen(frameworkPath, RTLD_NOW) != nil else { return false }
@@ -32,7 +35,7 @@ final class MenuBarRestriction {
             && NSClassFromString("MBAssessmentModeConfiguration") != nil
     }()
 
-    var isActive: Bool { current != nil }
+    var isActive: Bool { tracker.isActive }
 
     /// Holds a restriction allowing exactly `bundleIDs`.
     func apply(allowing bundleIDs: Set<String>) {
@@ -41,21 +44,29 @@ final class MenuBarRestriction {
             Self.log.error("could not build the assertion")
             return
         }
+        nextID += 1
+        let id = nextID
+        assertions[id] = next
+        tracker.requested(id, allowing: bundleIDs)
         Self.activate(next, with: config) { [weak self] error in
-            guard let error else { return }
-            Self.log.error("activation failed: \(error.localizedDescription, privacy: .public)")
-            Task { @MainActor in self?.onFailure?(error) }
+            Task { @MainActor in self?.activated(id, error: error) }
         }
-        current.map(Self.invalidate)
-        current = next
-        allowed = bundleIDs
-        Self.log.debug("restriction applied, \(bundleIDs.count) bundles allowed")
+        Self.log.debug("restriction requested, \(bundleIDs.count) bundles allowed")
+    }
+
+    private func activated(_ id: Int, error: Error?) {
+        if let error { Self.log.error("activation failed: \(error.localizedDescription, privacy: .public)") }
+        let result = tracker.activated(id, succeeded: error == nil)
+        invalidate(result.invalidate)
+        if result.latestFailed, let error { onFailure?(error) }
     }
 
     func release() {
-        current.map(Self.invalidate)
-        current = nil
-        allowed = nil
+        invalidate(tracker.release())
+    }
+
+    private func invalidate(_ ids: [Int]) {
+        for id in ids { assertions.removeValue(forKey: id).map(Self.invalidate) }
     }
 
     // MARK: Runtime bridging

@@ -18,6 +18,11 @@ check(RevealState.collapsed.afterClick(option: true) == .allShown, "option-click
 check(RevealState.hiddenShown.afterClick(option: true) == .allShown, "option-click from Hidden reveals all")
 check(RevealState.allShown.afterClick(option: false) == .collapsed, "click from all conceals")
 check(RevealState.allShown.afterClick(option: true) == .collapsed, "option-click from all conceals")
+do {
+    // However many plain clicks, Always Hidden is never revealed.
+    var state = RevealState.collapsed
+    for _ in 0..<10 { state = state.afterClick(option: false); check(state != .allShown, "plain clicks never reveal Always Hidden") }
+}
 check(RevealState.hiddenShown.concealedSections == [.alwaysHidden], "Hidden shown keeps Always Hidden concealed")
 
 // A temporary reveal for arranging must never become the user's toggle state.
@@ -257,6 +262,40 @@ for host in [kCFPreferencesCurrentHost, kCFPreferencesAnyHost] {
         CFPreferencesSetValue(key as CFString, nil, spacingDomain, kCFPreferencesCurrentUser, host)
     }
     CFPreferencesSynchronize(spacingDomain, kCFPreferencesCurrentUser, host)
+}
+
+// MARK: Assertion tracker
+
+do {
+    // A rejected activation keeps the previous restriction held.
+    var t = AssertionTracker()
+    t.requested(1, allowing: ["a"])
+    check(t.activated(1, succeeded: true).invalidate.isEmpty, "first confirmed")
+    t.requested(2, allowing: ["a", "b"])
+    check(t.live == [1, 2], "old one held while the new one activates")
+    let r = t.activated(2, succeeded: false)
+    check(r.invalidate == [2] && r.latestFailed, "failed latest is reported")
+    check(t.confirmed == 1 && t.isActive && t.allowed == ["a"], "previous restriction still held")
+}
+do {
+    // A superseded request failing late changes nothing.
+    var t = AssertionTracker()
+    t.requested(1, allowing: ["a"]); _ = t.activated(1, succeeded: true)
+    t.requested(2, allowing: ["b"]); t.requested(3, allowing: ["c"])
+    let late = t.activated(2, succeeded: false)
+    check(late.invalidate == [2] && !late.latestFailed, "stale failure ignored")
+    check(t.live == [1, 3] && t.allowed == ["c"], "confirmed and latest kept")
+    check(Set(t.activated(3, succeeded: true).invalidate) == [1], "older dropped once latest confirmed")
+    check(t.live == [3], "only the latest remains")
+}
+do {
+    // Nothing confirmed yet: a superseded success keeps the bar restricted.
+    var t = AssertionTracker()
+    t.requested(1, allowing: ["a"]); t.requested(2, allowing: ["b"])
+    check(t.activated(1, succeeded: true).invalidate.isEmpty, "superseded kept while nothing confirmed")
+    check(t.activated(2, succeeded: false).latestFailed, "latest failure reported")
+    check(t.live.contains(1), "bar still restricted after the latest fails")
+    check(!t.release().isEmpty && t.live.isEmpty && !t.isActive, "release drops everything")
 }
 
 print(failures == 0 ? "All tests passed" : "\(failures) failure(s)")
