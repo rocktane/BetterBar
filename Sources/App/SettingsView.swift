@@ -3,7 +3,7 @@ import Combine
 import ServiceManagement
 import SwiftUI
 
-/// Sections are arranged in the menu bar itself (Cmd-drag), so Settings only
+/// Sections are chosen in the menu bar itself (Cmd-drop), so Settings only
 /// holds behaviour, permission status and warnings.
 struct SettingsView: View {
     let sections: SectionController

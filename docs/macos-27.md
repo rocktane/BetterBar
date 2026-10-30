@@ -29,23 +29,22 @@ BetterBar signale ces apps dans les réglages (« Hors de /Applications ») et p
 
 ### Positions et sections
 
-La section est une propriété de l'app, enregistrée dans les préférences. **C'est la seule source de vérité** : on ne la déduit jamais de l'endroit où se trouvent les icônes. C'est la barre qui est rangée pour lui correspondre, de gauche à droite : `Toujours masqué ‹ séparateur ‹ Masqué ‹ séparateur ‹ Visible`.
+La section est une propriété de l'app, enregistrée dans les préférences. **C'est la seule source de vérité** : en dehors d'un ⌘-glisser, on ne la déduit jamais de l'endroit où se trouvent les icônes. Le masquage passe par la restriction, qui masque toutes les icônes d'une app absente de la liste où qu'elles soient : **BetterBar ne déplace jamais une icône**. L'ordre de la barre est celui de l'utilisateur.
 
-- Les deux séparateurs sont de vrais `NSStatusItem`. macOS mémorise leur place sous le bundle ID de BetterBar, comme pour toute autre icône. Hors ⌘-glisser, leur longueur est 0 : ils sont invisibles et ne laissent aucun trou, mais Accessibilité donne toujours leur position. Ils délimitent donc les zones en permanence.
-- **Au dépôt**, la zone où l'icône a été calée par macOS devient la section de son app. Seule l'app déposée change de section ; les autres gardent la leur.
-- **Le rangement** (`Arranger`) lit toute la barre par Accessibilité. Chaque icône hors de la zone de son app est ⌘-glissée par un événement synthétique, comme le ferait l'utilisateur, juste à côté du séparateur qui borne sa zone. L'ordre relatif des icônes est conservé. Le pointeur est remis en place après chaque glisser.
-- Observé sur macOS 27 : pendant un glisser, l'icône dépasse un voisin dès que le pointeur franchit le centre de ce voisin, mesuré à sa place d'avant le glisser. Relâcher à mi-chemin entre deux centres insère donc l'icône entre ces deux éléments. Les glisser passent mieux avec des séparateurs de longueur 0 qu'avec des séparateurs affichés.
-- **Le rangement déplace le pointeur** : il a lieu au lancement de BetterBar (avant le premier masquage) et après chaque dépôt. Un simple clic de révélation ne déclenche pas de glisser synthétique et ne retarde pas le masquage automatique.
-- Seules les icônes affichées sont lues : une icône masquée garde une position périmée dans Accessibilité. Le lancement et les dépôts révèlent temporairement toutes les sections pour les ranger.
-- **Toute nouvelle icône apparaît tout à gauche** (vérifié). Une app jamais rangée reste **Visible**, indépendamment de sa position physique ; elle est repositionnée au prochain rangement.
-- Les éléments d'Apple (Horloge, Control Center, indicateurs) ne sont jamais déplacés. Ils comptent seulement comme voisins. Une icône qui refuse de bouger est abandonnée après un essai.
-- Les icônes réordonnées pendant que BetterBar est quitté sont remises dans leur zone au lancement suivant.
+- Les deux séparateurs sont de vrais `NSStatusItem`. macOS mémorise leur place sous le bundle ID de BetterBar, comme pour toute autre icône. Hors ⌘-glisser, leur longueur est 0 : ils sont invisibles et ne laissent aucun trou, mais Accessibilité donne toujours leur position. De gauche à droite, ils bornent les zones `Toujours masqué ‹ séparateur ‹ Masqué ‹ séparateur ‹ Visible`.
+- **Dès le premier ⌘-glisser et tant que ⌘ reste enfoncé**, toutes les sections sont révélées et les séparateurs dessinés, pour que plusieurs icônes puissent être déposées partout à la suite.
+- **Masquer juste après avoir révélé** : MenuBarAgent fait apparaître les icônes en fondu ; une restriction qui arrive avant ~0,8 s masque les sections l'une après l'autre (mesuré par captures : à 0,6 s, Masqué disparaît ~130 ms avant Toujours masqué ; dès 0,8 s, tout disparaît ensemble). BetterBar retarde donc un masquage jusqu'à 0,9 s après le dernier affichage.
+- **Au dépôt**, `BarReader` lit la barre par Accessibilité une fois qu'elle s'est stabilisée. La zone où macOS a calé l'icône devient la section de son app. Seule l'app déposée change de section ; aucune icône n'est déplacée.
+- Seules les icônes affichées sont lues : une icône masquée garde une position périmée dans Accessibilité.
+- **Toute nouvelle icône apparaît tout à gauche** (vérifié). Une app jamais affectée reste **Visible**, indépendamment de sa position physique.
+- Un déplacement sans ⌘, ou un replacement par macOS, ne change pas la section.
+- Les éléments d'Apple (Horloge, Control Center, indicateurs) n'ont pas de section.
 - Masquer puis révéler ne change pas l'ordre : c'est vérifié sur plusieurs cycles, et en ajoutant une icône pendant un masquage.
-- La table des positions de macOS (`TrailingItemPreferredPositions`, conteneur `com.apple.MenuBar`) est protégée ; Thaw y écrit, et c'est là qu'il accumule la plupart de ses bugs. BetterBar n'y touche pas : il ne passe que par des ⌘-glisser.
+- La table des positions de macOS (`TrailingItemPreferredPositions`, conteneur `com.apple.MenuBar`) est protégée ; Thaw y écrit, et c'est là qu'il accumule la plupart de ses bugs. BetterBar n'y touche pas.
 
 ### Apps à plusieurs icônes (Stats, mdeck…)
 
-La restriction de macOS 27 ne connaît que des bundle IDs : **deux icônes d'une même app ne peuvent pas être dans deux sections différentes**. La signature n'y change rien, et Thaw bute sur la même limite avec Stats. La section de l'app est celle de l'icône que tu viens de déposer ; BetterBar déplace aussitôt ses autres icônes dans la même zone.
+La restriction de macOS 27 ne connaît que des bundle IDs : **deux icônes d'une même app ne peuvent pas être dans deux sections différentes**. La signature n'y change rien, et Thaw bute sur la même limite avec Stats. La section de l'app est celle de l'icône que tu viens de déposer ; toutes ses icônes sont masquées ou affichées ensemble, mais BetterBar ne les regroupe pas.
 
 Il n'existe pas de contournement par icône :
 

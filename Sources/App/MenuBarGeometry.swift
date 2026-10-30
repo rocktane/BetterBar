@@ -96,13 +96,25 @@ enum MenuBarGeometry {
     /// Whether a menu or popover opened from an icon is on screen: a window
     /// at menu bar level or above, from another app, hanging from the top of
     /// a display. Readable without Screen Recording (no titles needed).
-    static func isIconMenuOpen() -> Bool {
-        guard let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return false }
+    static func isIconMenuOpen() -> Bool { !iconMenuFrames().isEmpty }
+
+    /// Whether the Cocoa point falls in a menu or popover opened from an icon.
+    static func isInIconMenu(_ point: NSPoint) -> Bool {
+        let flipped = CGPoint(x: point.x, y: primaryHeight - point.y)
+        return iconMenuFrames().contains { $0.contains(flipped) }
+    }
+
+    /// Frames (top-left origin) of the menus and popovers opened from icons.
+    private static func iconMenuFrames() -> [CGRect] {
+        guard let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return [] }
         let bars = NSScreen.screens.map {
             CGRect(x: $0.frame.minX, y: primaryHeight - $0.frame.maxY,
                    width: $0.frame.width, height: menuBarHeight(of: $0))
         }
-        return windows.contains { isIconMenuWindow($0, ownPID: ProcessInfo.processInfo.processIdentifier, menuBars: bars) }
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        return windows.filter { isIconMenuWindow($0, ownPID: ownPID, menuBars: bars) }.compactMap { info in
+            (info[kCGWindowBounds as String] as? NSDictionary).flatMap { CGRect(dictionaryRepresentation: $0) }
+        }
     }
 
     static func isIconMenuWindow(_ info: [String: Any], ownPID: pid_t, menuBars: [CGRect]) -> Bool {

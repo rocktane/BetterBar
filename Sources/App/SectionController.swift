@@ -5,9 +5,9 @@ import os
 /// Owns the reveal state and keeps MenuBarAgent's restriction in sync with
 /// it, the assignments and the running apps.
 ///
-/// A section is a property of the app, never inferred from where its icons
-/// happen to be. `Arranger` moves icons to match it, so the layout follows
-/// the assignments and not the other way round.
+/// A section is a property of the app, chosen by a Cmd-drop or in Settings.
+/// Hiding goes through the restriction, wherever the icons are: BetterBar
+/// never moves them.
 @MainActor
 @Observable
 final class SectionController {
@@ -23,6 +23,8 @@ final class SectionController {
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private var scanTask: Task<Void, Never>?
     @ObservationIgnored private var retryCount = 0
+    @ObservationIgnored private var lastReveal: ContinuousClock.Instant?
+    @ObservationIgnored private var deferredApply: Task<Void, Never>?
 
     /// Called after every state change, for the auto-hide clock.
     @ObservationIgnored var onStateChange: ((RevealState) -> Void)?
@@ -58,6 +60,7 @@ final class SectionController {
     func stop() {
         observers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
         observers.removeAll()
+        deferredApply?.cancel()
         restriction.release()
     }
 
@@ -85,12 +88,12 @@ final class SectionController {
 
     @ObservationIgnored private var holding = false
 
-    /// Whether everything is revealed for BetterBar's own needs (a Cmd-drag,
-    /// rearranging the bar), not because the user asked.
+    /// Whether everything is revealed for a Cmd-drag, not because the user
+    /// asked.
     var isHolding: Bool { holding }
 
-    /// Reveals everything, so that every zone can receive an icon and every
-    /// icon can be read and moved.
+    /// Reveals everything, so that every zone can receive an icon and the
+    /// drop can be read.
     func beginHold() {
         guard !holding else { return }
         holding = true
@@ -162,12 +165,29 @@ final class SectionController {
 
     func apply() {
         guard isAvailable else { return }
+        deferredApply?.cancel()
+        deferredApply = nil
         let allowed = RestrictionPlanner.allowList(
             state: isHolding ? .allShown : state,
             assignments: preferences.assignments,
             running: runningProcesses(),
             knownBundleIDs: installedIDs
         )
+        let current = restriction.isActive ? restriction.allowed : nil
+        // Concealing icons still fading in would hide the sections one
+        // after the other: wait until they have settled, then hide them all.
+        if RestrictionPlanner.conceals(from: current, to: allowed), let lastReveal {
+            let wait = lastReveal + RestrictionPlanner.revealSettle - .now
+            if wait > .zero {
+                deferredApply = Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: wait)
+                    guard !Task.isCancelled else { return }
+                    self?.apply()
+                }
+                return
+            }
+        }
+        if RestrictionPlanner.reveals(from: current, to: allowed) { lastReveal = .now }
         guard let allowed else {
             if restriction.isActive { restriction.release() }
             return

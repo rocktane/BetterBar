@@ -2,15 +2,15 @@ import AppKit
 import os
 
 /// Global input around the menu bar: clicks on empty space, Cmd-drags of
-/// icons, and the auto-hide clock. Starts the `Arranger` whenever the user
-/// is looking at the bar: at launch and after a drop.
+/// icons, and the auto-hide clock. BetterBar never moves an icon itself: a
+/// Cmd-drop only tells which section the user chose for the app.
 @MainActor
 final class MenuBarWatcher {
     private static let log = Logger(subsystem: "com.yohan.betterbar", category: "input")
     private let sections: SectionController
     private let preferences: Preferences
     private let separators = Separators()
-    private let arranger: Arranger
+    private let reader: BarReader
     private let showContextMenu: (NSPoint) -> Void
 
     private var monitors: [Any] = []
@@ -25,16 +25,21 @@ final class MenuBarWatcher {
     private struct Press { var pid: pid_t?; let origin: NSPoint; var dragging = false }
     private var pressGeneration = 0
     private var press: Press?
+    /// From the first Cmd-drag until Command is released: everything stays
+    /// revealed and the separators drawn, so that several icons can be
+    /// dropped in a row.
+    private var cmdDragSession = false
+    private var dropsInFlight = 0
 
     init(sections: SectionController, preferences: Preferences, showContextMenu: @escaping (NSPoint) -> Void) {
         self.sections = sections
         self.preferences = preferences
         self.showContextMenu = showContextMenu
-        arranger = Arranger(sections: sections)
+        reader = BarReader(sections: sections)
     }
 
     func start() {
-        let mask: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseDown]
+        let mask: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseDown, .flagsChanged]
         if let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] event in
             MainActor.assumeIsolated { self?.handle(event) }
         }) { monitors.append(global) }
@@ -44,16 +49,6 @@ final class MenuBarWatcher {
             return event
         }) { monitors.append(local) }
         sections.onStateChange = { [weak self] state in self?.stateChanged(state) }
-
-        // Nothing is concealed yet: put every icon in place (icons reordered
-        // while BetterBar was not running, apps launched since) before the
-        // first restriction.
-        sections.beginHold()
-        Task {
-            try? await Task.sleep(for: .seconds(1))
-            await arranger.arrange()
-            sections.endHold()
-        }
     }
 
     func stop() {
@@ -66,8 +61,6 @@ final class MenuBarWatcher {
     // MARK: Events
 
     private func handle(_ event: NSEvent) {
-        // BetterBar's own drags, while arranging.
-        if Arranger.isOwnEvent(event) { return }
         // Global and local monitors can both see one event.
         if let last = lastHandledEvent, last == (event.timestamp, event.type) { return }
         lastHandledEvent = (event.timestamp, event.type)
@@ -76,6 +69,7 @@ final class MenuBarWatcher {
         case .leftMouseDown, .rightMouseDown: mouseDown(event)
         case .leftMouseDragged: mouseDragged()
         case .leftMouseUp: mouseUp()
+        case .flagsChanged: endCmdDragSessionIfDone()
         default: break
         }
     }
@@ -84,8 +78,13 @@ final class MenuBarWatcher {
         pendingMenu?.cancel()
         press = nil
         pressGeneration += 1
+        // Command released while its key-up went unseen.
+        endCmdDragSessionIfDone()
         let point = NSEvent.mouseLocation
-        guard let probes = MenuBarGeometry.probePoints(for: point) else { return }
+        guard let probes = MenuBarGeometry.probePoints(for: point) else {
+            collapseAfterOutsideClick(at: point)
+            return
+        }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let generation = pressGeneration
 
@@ -125,12 +124,26 @@ final class MenuBarWatcher {
         }
     }
 
+    /// A click away from the bar conceals at once, rather than after the
+    /// auto-hide delay. A click in a menu or popover opened from a revealed
+    /// icon keeps it revealed: concealing the icon would cut its menu off.
+    private func collapseAfterOutsideClick(at point: NSPoint) {
+        guard sections.state.isRevealing, !sections.isHolding,
+              !MenuBarGeometry.isInIconMenu(point)
+        else { return }
+        Self.log.debug("click outside the bar: collapsing")
+        sections.collapse()
+    }
+
     private func mouseDragged() {
         guard var current = press, !current.dragging else { return }
         let point = NSEvent.mouseLocation
         guard hypot(point.x - current.origin.x, point.y - current.origin.y) > BarLayout.dragThreshold else { return }
         current.dragging = true
         press = current
+        guard !cmdDragSession else { return }
+        cmdDragSession = true
+        Self.log.debug("cmd-drag: revealed until Command is released")
         sections.beginHold()
         separators.show(true, style: preferences.separatorStyle)
     }
@@ -140,20 +153,32 @@ final class MenuBarWatcher {
         press = nil
         guard finished.dragging else { return }
         let dropX = Double(NSEvent.mouseLocation.x)
-        Task { await self.completeDrop(pid: finished.pid, dropX: dropX) }
+        dropsInFlight += 1
+        Task {
+            await self.completeDrop(pid: finished.pid, dropX: dropX)
+            self.dropsInFlight -= 1
+            self.endCmdDragSessionIfDone()
+        }
     }
 
     /// Reads where the icon actually landed (macOS snaps it to a slot), while
-    /// everything is still revealed and the separators are still drawn, then
-    /// brings the app's other icons, and any stray one, into line.
+    /// everything is still revealed and the separators are still drawn. No
+    /// icon is moved: the app's other icons stay where the user left them.
     private func completeDrop(pid: pid_t?, dropX: Double) async {
-        if let app = pid.flatMap(Self.assignableApp(pid:)),
-           let section = BarLayout.droppedSection(await arranger.settledItems(), owner: app.id, dropX: dropX) {
-            sections.setSection(section, for: app)
-        }
-        // Drags past zero-length separators are the reliable ones.
+        guard let app = pid.flatMap(Self.assignableApp(pid:)),
+              let section = BarLayout.droppedSection(await reader.settledItems(), owner: app.id, dropX: dropX)
+        else { return }
+        sections.setSection(section, for: app)
+    }
+
+    /// Conceals again once Command is up and every drop has been read.
+    private func endCmdDragSessionIfDone() {
+        guard cmdDragSession, dropsInFlight == 0, press?.dragging != true,
+              !NSEvent.modifierFlags.contains(.command)
+        else { return }
+        cmdDragSession = false
+        Self.log.debug("cmd-drag: done")
         separators.show(false)
-        await arranger.arrange()
         sections.endHold()
     }
 
@@ -161,10 +186,10 @@ final class MenuBarWatcher {
     private static func assignableApp(pid: pid_t) -> MenuBarApp? {
         guard pid != ProcessInfo.processInfo.processIdentifier,
               let process = NSRunningApplication(processIdentifier: pid),
-              !Arranger.isApple(process)
+              !BarReader.isApple(process)
         else { return nil }
         let exe = process.executableURL?.lastPathComponent ?? ""
-        return MenuBarApp(id: Arranger.key(of: process),
+        return MenuBarApp(id: BarReader.key(of: process),
                           bundleID: process.bundleIdentifier, name: process.localizedName ?? exe,
                           bundlePath: process.bundleURL?.path, iconCount: 0)
     }
@@ -182,16 +207,11 @@ final class MenuBarWatcher {
         self.timer = timer
     }
 
-    // Revealing only changes the restriction. Arranging here would post
-    // Cmd-drags during the user's clicks and move the pointer back into
-    // the bar after they leave, delaying auto-hide. Launch and drops
-    // already arrange every section while a temporary reveal is held.
-
     private func tick() {
         clock.delay = preferences.effectiveAutoHideDelay
         let pressing = press != nil, inBar = MenuBarGeometry.isInMenuBar(NSEvent.mouseLocation)
         let buttons = NSEvent.pressedMouseButtons != 0, menuOpen = MenuBarGeometry.isIconMenuOpen()
-        let busy = pressing || inBar || buttons || menuOpen || arranger.isArranging || sections.isHolding
+        let busy = pressing || inBar || buttons || menuOpen || sections.isHolding
         if busy != lastBusy {
             lastBusy = busy
             Self.log.debug("auto-hide busy=\(busy, privacy: .public) press=\(pressing, privacy: .public) bar=\(inBar, privacy: .public) buttons=\(buttons, privacy: .public) menu=\(menuOpen, privacy: .public)")

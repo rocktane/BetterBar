@@ -94,6 +94,25 @@ enum SystemHosts {
 }
 
 enum RestrictionPlanner {
+    /// Observed on macOS 27: MenuBarAgent fades revealed icons in for a
+    /// while, and a restriction landing before they are done conceals them
+    /// only after the others, section by section. Past this delay since the
+    /// last reveal, every icon fades out at once.
+    static let revealSettle: Duration = .milliseconds(900)
+
+    /// Whether switching between allow lists (nil: unrestricted) conceals
+    /// an icon that is currently drawn.
+    static func conceals(from old: Set<String>?, to new: Set<String>?) -> Bool {
+        guard let new else { return false }
+        guard let old else { return true }
+        return !old.isSubset(of: new)
+    }
+
+    /// Whether switching between allow lists draws an icon again.
+    static func reveals(from old: Set<String>?, to new: Set<String>?) -> Bool {
+        conceals(from: new, to: old)
+    }
+
     /// The bundle identifiers to allow, or nil when no restriction should
     /// be held (nothing running needs concealing).
     ///
