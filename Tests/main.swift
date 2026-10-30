@@ -126,57 +126,22 @@ let stats = [sep("L", 150), sep("R", 200), icon("s1", 170, owner: "stats"), icon
 check(BarLayout.droppedSection(stats, owner: "stats", dropX: 175) == .hidden, "nearest icon of a multi-icon app")
 check(BarLayout.droppedSection(stats, owner: "other", dropX: 175) == nil, "no icon")
 
-/// Applies a move the way MenuBarAgent does: the icon passes every
-/// neighbour whose centre the pointer crosses, then everything is re-laid
-/// out at a fixed pitch.
-func simulate(_ items: [BarItem], _ move: BarMove) -> [BarItem] {
-    var ordered = items.sorted { $0.midX < $1.midX }
-    let index = ordered.firstIndex { $0.id == move.itemID }!
-    let moved = ordered.remove(at: index)
-    let insertAt = ordered.firstIndex { $0.midX > move.toX } ?? ordered.count
-    ordered.insert(moved, at: insertAt)
-    return ordered.enumerated().map { i, item in
-        let x = 100 + Double(i) * 30
-        return BarItem(id: item.id, owner: item.owner, kind: item.kind, minX: x - 10, maxX: x + 10)
-    }
-}
-
-func arranged(_ items: [BarItem]) -> (items: [BarItem], moves: Int) {
-    var items = items, moves = 0
-    while let move = BarLayout.nextMove(items), moves < 50 { items = simulate(items, move); moves += 1 }
-    return (items, moves)
-}
-
-func order(_ items: [BarItem]) -> [String] { items.sorted { $0.midX < $1.midX }.map(\.id) }
-
-let tidy = [icon("ah", 100, .alwaysHidden), sep("L", 130), icon("h", 160, .hidden), sep("R", 190), icon("v", 220)]
-check(BarLayout.misplaced(tidy).isEmpty && BarLayout.nextMove(tidy) == nil, "tidy bar needs nothing")
-
-// A new app appears left of everything but is Visible.
-let fresh = arranged([icon("new", 100), icon("ah", 130, .alwaysHidden), sep("L", 160), icon("h", 190, .hidden), sep("R", 220), icon("v", 250)])
-check(order(fresh.items) == ["ah", "L", "h", "R", "new", "v"], "new visible icon goes right of the separators: \(order(fresh.items))")
-check(fresh.moves == 1, "one move")
-
-// Everything misplaced, with empty zones: each lands in its zone, in order.
-let messy = arranged([sep("L", 100), sep("R", 130), icon("h1", 160, .hidden), icon("v1", 190), icon("ah1", 220, .alwaysHidden),
-                      icon("h2", 250, .hidden), icon("ah2", 280, .alwaysHidden)])
-check(BarLayout.misplaced(messy.items).isEmpty, "messy bar ends tidy: \(order(messy.items))")
-check(order(messy.items) == ["ah1", "ah2", "L", "h1", "h2", "R", "v1"], "relative order kept: \(order(messy.items))")
-
-// Several visible icons left of the separators keep their order.
-let lefties = arranged([icon("a", 100), icon("b", 130), icon("c", 160), sep("L", 190), sep("R", 220), icon("v", 250)])
-check(order(lefties.items) == ["L", "R", "a", "b", "c", "v"], "visible icons keep order: \(order(lefties.items))")
-
-// Every icon of a multi-icon app follows the app's section.
-let split = arranged([icon("s1", 100, .hidden, owner: "stats"), sep("L", 130), sep("R", 160), icon("x", 190), icon("s2", 220, .hidden, owner: "stats")])
-check(order(split.items) == ["L", "s1", "s2", "R", "x"], "multi-icon app gathered: \(order(split.items))")
-
+check(BarLayout.droppedSection(stats, owner: "stats", dropX: 255) == .visible, "drop right of both separators")
+let leftDrop = [icon("a", 100, .visible), sep("L", 150), sep("R", 200)]
+check(BarLayout.droppedSection(leftDrop, owner: "a", dropX: 105) == .alwaysHidden, "zone comes from the position, not the saved section")
+check(BarLayout.droppedSection([icon("a", 100), sep("L", 150)], owner: "a", dropX: 100) == nil, "missing separator")
 let apple = BarItem(id: "clock", owner: "com.apple.MenuBarAgent", kind: .fixed, minX: 90, maxX: 110)
-check(BarLayout.nextMove([apple, sep("L", 130), sep("R", 160)]) == nil, "Apple's items are never moved")
-let pastApple = arranged([icon("a", 70), apple, sep("L", 130), sep("R", 160)])
-check(order(pastApple.items) == ["clock", "L", "R", "a"], "Apple's items still count as neighbours: \(order(pastApple.items))")
-check(BarLayout.nextMove([icon("v", 100), sep("L", 130)]) == nil, "nothing to do without both separators")
-check(BarLayout.nextMove([icon("v", 100), sep("L", 130), sep("R", 160)], skipping: ["v"]) == nil, "stuck icons are skipped")
+check(BarLayout.droppedSection([apple, sep("L", 150), sep("R", 200)], owner: "com.apple.MenuBarAgent", dropX: 100) == nil, "Apple's items get no section")
+
+// MARK: Reveal pacing
+
+check(RestrictionPlanner.conceals(from: nil, to: ["a"]), "restricting an unrestricted bar conceals")
+check(!RestrictionPlanner.conceals(from: ["a"], to: nil), "releasing conceals nothing")
+check(RestrictionPlanner.reveals(from: ["a"], to: nil), "releasing reveals")
+check(RestrictionPlanner.conceals(from: ["a", "b"], to: ["a"]), "dropping an app conceals it")
+check(!RestrictionPlanner.reveals(from: ["a", "b"], to: ["a"]), "dropping an app reveals nothing")
+check(RestrictionPlanner.reveals(from: ["a"], to: ["a", "b"]), "allowing an app reveals it")
+check(!RestrictionPlanner.conceals(from: ["a"], to: ["a"]) && !RestrictionPlanner.reveals(from: ["a"], to: ["a"]), "same list")
 
 // MARK: Auto-hide
 

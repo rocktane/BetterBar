@@ -7,8 +7,8 @@ import AppKit
 /// they have zero length; app-local spacing overrides in main.swift remove
 /// AppKit's surrounding padding, leaving no gap on the bar. Their frames
 /// stay readable through Accessibility, so they bound the zones at all
-/// times. Newly created, macOS puts them left of every icon; `Arranger`
-/// then moves icons of Visible apps to their right.
+/// times. Newly created, macOS puts them left of every icon; the user
+/// Cmd-drags icons around them.
 @MainActor
 final class Separators {
     private let items: [NSStatusItem]

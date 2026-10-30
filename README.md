@@ -4,12 +4,12 @@ Gestionnaire de la barre des menus pour macOS 27. Les icônes sont réparties en
 
 ## Utilisation
 
-- **⌘-glisser une icône** affiche les séparateurs et affecte son app à la section choisie. Toutes les icônes d’une même app suivent cette section.
+- **⌘-glisser une icône** affiche les séparateurs et affecte son app à la section où tu la déposes. Toutes les icônes d’une même app sont masquées ou affichées ensemble. BetterBar ne déplace jamais les icônes : leur ordre reste le tien, et un déplacement sans ⌘ ne change pas la section.
 - **Cliquer dans un espace vide** affiche ou masque la section Masqué. **⌥-cliquer** affiche ou masque toutes les sections.
-- Le deuxième clic d’un double clic (et les suivants) est ignoré : le premier clic agit normalement. Seul **⌥-clic** révèle la section Toujours masqué hors rangement des icônes.
+- Le deuxième clic d’un double clic (et les suivants) est ignoré : le premier clic agit normalement. En dehors d’un ⌘-glisser, seul **⌥-clic** révèle la section Toujours masqué.
 - **Cliquer droit dans un espace vide** ouvre le menu Réglages et Quitter.
-- Le masquage automatique et son délai se règlent dans la fenêtre de réglages. Un menu ouvert suspend le masquage.
-- Les séparateurs peuvent être un chevron, un point ou un espace. Ils apparaissent pendant le ⌘-glisser.
+- Le masquage automatique et son délai se règlent dans la fenêtre de réglages. Un menu ouvert suspend le masquage. Un clic hors de la barre des menus masque aussitôt, sauf dans un menu ou une fenêtre ouverts depuis une icône.
+- Les séparateurs peuvent être un chevron, un point ou un espace. Ils apparaissent pendant le ⌘-glisser et restent affichés, avec toutes les sections, tant que ⌘ est enfoncé : on peut déposer plusieurs icônes à la suite.
 - **Appliquer** un espacement propose de relancer les apps concernées ou d’attendre leur prochain lancement. Les apps qui refusent de quitter restent ouvertes. Les éléments Apple sont exclus des relances.
 - BetterBar apparaît dans le Dock et dans ⌘Tab tant que la fenêtre de réglages est ouverte.
 
