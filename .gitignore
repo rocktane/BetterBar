@@ -1,0 +1,44 @@
+# Build products and generated assets/reports
+/build/
+/dist/
+/.build/
+/DerivedData/
+*.dSYM/
+*.xcresult/
+*.xcarchive/
+*.profraw
+*.profdata
+*.gcda
+*.gcno
+
+# Local Swift/Xcode state
+/.swiftpm/
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+
+# Editor and macOS metadata
+.DS_Store
+.AppleDouble
+.LSOverride
+*~
+*.swp
+*.swo
+/.idea/
+
+# Local configuration, credentials, and signing material
+.env
+.env.*
+!.env.example
+*.p12
+*.pfx
+*.key
+*.pem
+*.cer
+*.mobileprovision
+*.provisionprofile
+
+# Local scratch files and logs
+/tmp/
+*.log
