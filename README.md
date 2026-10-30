@@ -6,6 +6,7 @@ Gestionnaire de la barre des menus pour macOS 27. Les icônes sont réparties en
 
 - **⌘-glisser une icône** affiche les séparateurs et affecte son app à la section choisie. Toutes les icônes d’une même app suivent cette section.
 - **Cliquer dans un espace vide** affiche ou masque la section Masqué. **⌥-cliquer** affiche ou masque toutes les sections.
+- Le deuxième clic d’un double clic (et les suivants) est ignoré : le premier clic agit normalement. Seul **⌥-clic** révèle la section Toujours masqué hors rangement des icônes.
 - **Cliquer droit dans un espace vide** ouvre le menu Réglages et Quitter.
 - Le masquage automatique et son délai se règlent dans la fenêtre de réglages. Un menu ouvert suspend le masquage.
 - Les séparateurs peuvent être un chevron, un point ou un espace. Ils apparaissent pendant le ⌘-glisser.
