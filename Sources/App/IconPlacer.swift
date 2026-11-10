@@ -65,10 +65,19 @@ final class IconPlacer {
     private var isIdle: Bool {
         !sections.isHolding && NSEvent.pressedMouseButtons == 0
             && NSEvent.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
+            && CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: Self.anyInput) >= Self.quietPeriod
     }
 
+    /// No physical input for this long before a drag starts, so that the
+    /// user is unlikely to type or click while it runs.
+    private static let quietPeriod: TimeInterval = 1.5
+    private static let anyInput = CGEventType(rawValue: ~0)!
+
     private func place() async {
-        guard isIdle else { return retryLater() }
+        guard isIdle else {
+            Self.log.debug("not idle: buttons \(NSEvent.pressedMouseButtons, privacy: .public) flags \(NSEvent.modifierFlags.rawValue, privacy: .public) holding \(self.sections.isHolding, privacy: .public)")
+            return retryLater()
+        }
         var items = await reader.settledItems()
         let owners = candidates().intersection(items.map(\.owner))
         Self.log.debug("new apps drawn: \(owners.sorted().joined(separator: " "), privacy: .public) bar: \(items.map { "\($0.owner)@\(Int($0.midX))" }.joined(separator: " "), privacy: .public)")
@@ -105,10 +114,14 @@ final class IconPlacer {
     /// The user pressed the left button during a placement and has not
     /// released it: their own release ends the drag, never a synthetic one.
     private var userHoldsButton = false
+    /// The user pressed or released a modifier during a placement: the
+    /// synthetic Command state is theirs to end.
+    private var userTouchedModifiers = false
 
     private func startWatchingInput() {
         interrupted = false
         userHoldsButton = false
+        userTouchedModifiers = false
         let mask: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseUp, .rightMouseDown, .otherMouseDown, .mouseMoved,
                                            .leftMouseDragged, .rightMouseDragged, .scrollWheel, .keyDown, .flagsChanged]
         let handler: (NSEvent) -> Void = { [weak self] event in
@@ -116,9 +129,11 @@ final class IconPlacer {
             let type = event.type
             MainActor.assumeIsolated {
                 guard let self else { return }
+                if !self.interrupted { Self.log.debug("input interrupts placement: type \(type.rawValue, privacy: .public)") }
                 self.interrupted = true
                 if type == .leftMouseDown { self.userHoldsButton = true }
                 if type == .leftMouseUp { self.userHoldsButton = false }
+                if type == .flagsChanged { self.userTouchedModifiers = true }
             }
         }
         if let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: handler) { inputMonitors.append(global) }
@@ -130,11 +145,16 @@ final class IconPlacer {
         inputMonitors.removeAll()
     }
 
-    /// The user was busy: look again in a moment.
+    /// The user was busy: look again in a moment. One retry at a time,
+    /// whatever the number of callers.
+    private var retry: Task<Void, Never>?
+
     private func retryLater() {
         Self.log.debug("busy: placing later")
-        Task { @MainActor [weak self] in
+        guard retry == nil else { return }
+        retry = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(3))
+            self?.retry = nil
             self?.placeNewIcons()
         }
     }
@@ -145,7 +165,10 @@ final class IconPlacer {
     /// the button is released where it is. The pointer is put back unless
     /// the user moved it. Returns whether the drag ran to its end.
     private func drag(_ move: BarMove, y: Double) async -> Bool {
-        let source = CGEventSource(stateID: .combinedSessionState)
+        // Posted at the session level from a private source: at the HID
+        // level, the Command flag of these events would stay in the
+        // hardware modifier state and turn the user's keys into shortcuts.
+        let source = CGEventSource(stateID: .privateState)
         source?.localEventsSuppressionInterval = 0
         let saved = CGEvent(source: nil)?.location
         func post(_ type: CGEventType, x: Double, command: Bool = true) {
@@ -157,7 +180,17 @@ final class IconPlacer {
             else { return }
             event.flags = command ? .maskCommand : []
             event.setIntegerValueField(.eventSourceUserData, value: Self.eventTag)
-            event.post(tap: .cghidEventTap)
+            event.post(tap: .cgSessionEventTap)
+        }
+        /// Even there, the session keeps Command down after the drag:
+        /// release it, unless the user has been using modifiers meanwhile.
+        func releaseCommand() {
+            guard !userTouchedModifiers,
+                  let event = CGEvent(keyboardEventSource: source, virtualKey: 0x37, keyDown: false)
+            else { return }
+            event.flags = []
+            event.setIntegerValueField(.eventSourceUserData, value: Self.eventTag)
+            event.post(tap: .cgSessionEventTap)
         }
         func pause(_ ms: Int) async { try? await Task.sleep(for: .milliseconds(ms)) }
         func restorePointer() { if !interrupted, let saved { CGWarpMouseCursorPosition(saved) } }
@@ -187,6 +220,7 @@ final class IconPlacer {
             post(.leftMouseUp, x: x)
         }
         await pause(40)
+        releaseCommand()
         restorePointer()
         return !interrupted
     }
