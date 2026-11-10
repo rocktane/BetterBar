@@ -12,8 +12,9 @@ import os
 /// app is never moved again: the order of the bar stays the user's.
 ///
 /// Only icons MenuBarAgent currently draws are read and moved: a concealed
-/// icon has a stale frame. The drags move the pointer, which is put back,
-/// and never run while a button or a modifier is held.
+/// icon has a stale frame. The drags move the pointer, which is put back;
+/// they never start while a button or a modifier is held, and any physical
+/// input stops them.
 @MainActor
 final class IconPlacer {
     private static let log = Logger(subsystem: "com.yohan.betterbar", category: "placer")
@@ -74,18 +75,47 @@ final class IconPlacer {
         // Apps already in their zone (or with a section the user chose) are
         // never moved; only misplaced Visible icons are.
         var stuck: Set<String> = []
+        var placed = owners
+        startWatchingInput()
+        defer { stopWatchingInput() }
         for _ in 0..<30 {
-            guard let move = BarLayout.placementMove(items, owners: owners, skipping: stuck) else { break }
-            guard isIdle, let y = reader.midY[move.itemID] else { return retryLater() }
+            // A Cmd-drop while we waited placed that app: leave it alone.
+            let current = owners.intersection(candidates())
+            placed.formIntersection(current.union(sections.preferences.placedApps))
+            guard let move = BarLayout.placementMove(items, owners: current, skipping: stuck) else { break }
+            guard isIdle, !interrupted, let y = reader.midY[move.itemID] else { return retryLater() }
             Self.log.debug("placing new icon \(move.itemID, privacy: .public) \(move.fromX, privacy: .public) → \(move.toX, privacy: .public)")
-            await drag(move, y: y)
+            guard await drag(move, y: y) else { return retryLater() }
             let next = await reader.settledItems()
             // An icon that does not move is given up on, not dragged forever.
             if next == items { stuck.insert(move.itemID) }
             items = next
         }
         // One attempt per app: whatever happens next is the user's choice.
-        sections.preferences.markPlaced(owners)
+        sections.preferences.markPlaced(placed)
+    }
+
+    // MARK: User input
+
+    private var inputMonitors: [Any] = []
+    /// Set by any physical input while placing: the drag stops at once.
+    private var interrupted = false
+
+    private func startWatchingInput() {
+        interrupted = false
+        let mask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown, .mouseMoved,
+                                           .leftMouseDragged, .rightMouseDragged, .scrollWheel, .keyDown, .flagsChanged]
+        let handler: (NSEvent) -> Void = { [weak self] event in
+            guard !Self.isOwnEvent(event) else { return }
+            MainActor.assumeIsolated { self?.interrupted = true }
+        }
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: handler) { inputMonitors.append(global) }
+        if let local = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { handler($0); return $0 }) { inputMonitors.append(local) }
+    }
+
+    private func stopWatchingInput() {
+        inputMonitors.forEach(NSEvent.removeMonitor)
+        inputMonitors.removeAll()
     }
 
     /// The user was busy: look again in a moment.
@@ -98,9 +128,11 @@ final class IconPlacer {
     }
 
     /// A Cmd-drag from the icon's centre to `move.toX`, in small steps so
-    /// that MenuBarAgent sees every neighbour being passed. The pointer is
-    /// put back where it was.
-    private func drag(_ move: BarMove, y: Double) async {
+    /// that MenuBarAgent sees every neighbour being passed. Any physical
+    /// input stops it: before the press nothing is posted, during the drag
+    /// the button is released where it is. The pointer is put back unless
+    /// the user moved it. Returns whether the drag ran to its end.
+    private func drag(_ move: BarMove, y: Double) async -> Bool {
         let source = CGEventSource(stateID: .combinedSessionState)
         source?.localEventsSuppressionInterval = 0
         let saved = CGEvent(source: nil)?.location
@@ -113,19 +145,25 @@ final class IconPlacer {
             event.post(tap: .cghidEventTap)
         }
         func pause(_ ms: Int) async { try? await Task.sleep(for: .milliseconds(ms)) }
+        func restorePointer() { if !interrupted, let saved { CGWarpMouseCursorPosition(saved) } }
 
         post(.mouseMoved, x: move.fromX, command: false)
         await pause(40)
+        guard !interrupted, isIdle else { restorePointer(); return false }
         post(.leftMouseDown, x: move.fromX)
         await pause(80)
         let steps = max(8, Int(abs(move.toX - move.fromX) / 8))
+        var x = move.fromX
         for step in 1...steps {
-            post(.leftMouseDragged, x: move.fromX + (move.toX - move.fromX) * Double(step) / Double(steps))
+            if interrupted { break }
+            x = move.fromX + (move.toX - move.fromX) * Double(step) / Double(steps)
+            post(.leftMouseDragged, x: x)
             await pause(12)
         }
-        await pause(80)
-        post(.leftMouseUp, x: move.toX)
+        if !interrupted { await pause(80) }
+        post(.leftMouseUp, x: x)
         await pause(40)
-        if let saved { CGWarpMouseCursorPosition(saved) }
+        restorePointer()
+        return !interrupted
     }
 }
