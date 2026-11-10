@@ -141,7 +141,19 @@ check(BarLayout.placementMove(newIcon, owners: ["v"]) == nil, "an icon already i
 check(BarLayout.placementMove([icon("h", 80, .hidden), sep("L", 150), sep("R", 200)], owners: ["h"]) == nil,
       "an app with a section is never moved")
 check(BarLayout.placementMove(newIcon, owners: ["new"], skipping: ["new"]) == nil, "a stuck icon is given up on")
-check(BarLayout.placementMove([icon("new", 80), sep("L", 150)], owners: ["new"]) == nil, "missing separator")
+check(BarLayout.placementMove([icon("new", 80), sep("L", 150)], owners: ["new"]) == nil, "one separator: the bar cannot be read")
+// Separators concealed with the sections: right after the first icon
+// plainly in the Visible zone.
+let concealedSeps = [icon("new", 80), icon("v", 200), icon("w", 230)]
+check(BarLayout.placementMove(concealedSeps, owners: ["new"]) == BarMove(itemID: "new", fromX: 80, toX: 215),
+      "separators concealed: after the first Visible icon")
+let hiddenShownBar = [icon("new", 80), icon("h", 120, .hidden), icon("u", 150), icon("v", 200)]
+check(BarLayout.placementMove(hiddenShownBar, owners: ["new"])?.toX == 175,
+      "Hidden revealed: after the first Visible icon right of every Hidden one")
+check(BarLayout.placementMove([icon("v", 100), icon("new", 200)], owners: ["new"]) == nil,
+      "separators concealed: already right of a Visible icon")
+check(BarLayout.placementMove([icon("new", 80), icon("h", 120, .hidden)], owners: ["new"]) == nil,
+      "separators concealed, no Visible icon to anchor to")
 check(BarLayout.placementMove([icon("new", 80), sep("L", 150), sep("R", 160)], owners: ["new"])?.toX == 168,
       "no icon after the separators")
 let twoNew = [icon("n1", 60, owner: "multi"), icon("n2", 90, owner: "multi"), sep("L", 150), sep("R", 170), icon("v", 210)]

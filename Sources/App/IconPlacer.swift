@@ -7,8 +7,8 @@ import os
 /// both separators: in the Always Hidden zone. Its app has no section yet,
 /// so it stays drawn while collapsed, but revealing the other sections
 /// draws all their icons to its right. The first time an app's icons are
-/// seen outside their zone, they are Cmd-dragged right after the separator
-/// that starts the Visible zone, the way the user would. After that the
+/// seen outside their zone, they are Cmd-dragged into the Visible zone (see
+/// `BarLayout.placementMove`), the way the user would. After that the
 /// app is never moved again: the order of the bar stays the user's.
 ///
 /// Only icons MenuBarAgent currently draws are read and moved: a concealed
@@ -72,7 +72,7 @@ final class IconPlacer {
         var items = await reader.settledItems()
         let owners = candidates().intersection(items.map(\.owner))
         Self.log.debug("new apps drawn: \(owners.sorted().joined(separator: " "), privacy: .public) bar: \(items.map { "\($0.owner)@\(Int($0.midX))" }.joined(separator: " "), privacy: .public)")
-        guard !owners.isEmpty, BarLayout.separatorMidXs(items).count == 2 else { return }
+        guard !owners.isEmpty else { return }
 
         // Apps already in their zone (or with a section the user chose) are
         // never moved; only misplaced Visible icons are.

@@ -34,6 +34,9 @@ final class BarReader {
     private func items() async -> [BarItem] {
         let raw = await Task.detached(priority: .userInitiated) { Inventory.statusItems() }.value
         let ownPID = ProcessInfo.processInfo.processIdentifier
+        // A restriction may conceal the separators too: their frames are
+        // then stale.
+        let separatorsDrawn = sections.isDisplayed(.current)
         var result: [BarItem] = []
         var midY: [String: Double] = [:]
         for status in raw {
@@ -41,6 +44,7 @@ final class BarReader {
             let key = Self.key(of: process)
             let kind: BarItem.Kind
             if status.pid == ownPID {
+                guard separatorsDrawn else { continue }
                 kind = .separator
             } else if Self.isApple(process) {
                 kind = .fixed
