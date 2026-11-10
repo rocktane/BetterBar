@@ -137,8 +137,11 @@ final class IconPlacer {
         source?.localEventsSuppressionInterval = 0
         let saved = CGEvent(source: nil)?.location
         func post(_ type: CGEventType, x: Double, command: Bool = true) {
+            post(type, at: CGPoint(x: x, y: y), command: command)
+        }
+        func post(_ type: CGEventType, at point: CGPoint, command: Bool = true) {
             guard let event = CGEvent(mouseEventSource: source, mouseType: type,
-                                      mouseCursorPosition: CGPoint(x: x, y: y), mouseButton: .left)
+                                      mouseCursorPosition: point, mouseButton: .left)
             else { return }
             event.flags = command ? .maskCommand : []
             event.setIntegerValueField(.eventSourceUserData, value: Self.eventTag)
@@ -161,7 +164,13 @@ final class IconPlacer {
             await pause(12)
         }
         if !interrupted { await pause(80) }
-        post(.leftMouseUp, x: x)
+        // Interrupted: release where the user has the pointer, never pull
+        // it back to the drag's last step.
+        if interrupted, let here = CGEvent(source: nil)?.location {
+            post(.leftMouseUp, at: here)
+        } else {
+            post(.leftMouseUp, x: x)
+        }
         await pause(40)
         restorePointer()
         return !interrupted
