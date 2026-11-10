@@ -41,6 +41,9 @@ La section est une propriété de l'app, enregistrée dans les préférences. **
 - Les éléments d'Apple (Horloge, Control Center, indicateurs) n'ont pas de section.
 - Masquer puis révéler ne change pas l'ordre : c'est vérifié sur plusieurs cycles, et en ajoutant une icône pendant un masquage.
 - La table des positions de macOS (`TrailingItemPreferredPositions`, conteneur `com.apple.MenuBar`) est protégée ; Thaw y écrit, et c'est là qu'il accumule la plupart de ses bugs. BetterBar n'y touche pas.
+- Cette table donne, pour chaque élément, sa distance au bord droit ; l'ordre de la barre en découle. MenuBarAgent la réécrit après chaque glisser et une dizaine de secondes après la première apparition d'une app (journal `Persisting trailing item positions`). Il relève alors la place de chaque élément **affiché** sur la barre telle qu'elle est dessinée, et garde l'ancienne valeur des éléments masqués.
+- **Les séparateurs sont donc masqués avec les sections.** Un séparateur resté affiché pendant que les icônes Masqué sont masquées serait relevé collé à l'autre ; au prochain affichage, ces icônes reviendraient à gauche des deux, dans la zone Toujours masqué, alors que leur app est toujours Masqué. Vérifié avec des apps jetables (deux séparateurs de longueur 0 autour d'une icône masquée, puis lancement d'une nouvelle app) : sans le masquage des séparateurs, les deux séparateurs passent à la même valeur, à droite de l'icône ; avec lui, leurs valeurs ne bougent pas. Masqués, les séparateurs n'occupent aucune place : les icônes voisines ne bougent pas non plus.
+- Reste un cas que BetterBar ne peut pas empêcher : quand aucune restriction n'est tenue (aucune app masquée ne tourne, ou tout est révélé), une réécriture peut encore rapprocher les séparateurs autour d'une app quittée. Un ⌘-glisser de son icône la remet dans sa zone.
 
 ### Apps à plusieurs icônes (Stats, mdeck…)
 

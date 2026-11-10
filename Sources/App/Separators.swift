@@ -5,10 +5,12 @@ import AppKit
 /// They are real status items so that macOS keeps their place (keyed by
 /// bundle ID and autosave name) like any other icon. Outside a Cmd-drag
 /// they have zero length; app-local spacing overrides in main.swift remove
-/// AppKit's surrounding padding, leaving no gap on the bar. Their frames
-/// stay readable through Accessibility, so they bound the zones at all
-/// times. Newly created, macOS puts them left of every icon; the user
-/// Cmd-drags icons around them.
+/// AppKit's surrounding padding, leaving no gap on the bar. While sections
+/// are concealed, the restriction conceals them too, so that MenuBarAgent
+/// keeps their place (see `RestrictionPlanner.allowList`); a Cmd-drag reveals
+/// them with everything else, and the drop is read from their frames.
+/// Newly created, macOS puts them left of every icon; the user Cmd-drags
+/// icons around them.
 @MainActor
 final class Separators {
     private let items: [NSStatusItem]
