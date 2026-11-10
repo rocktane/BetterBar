@@ -22,12 +22,20 @@ struct BarItem: Equatable, Sendable {
     var midX: Double { (minX + maxX) / 2 }
 }
 
+/// A Cmd-drag of one icon: press at its centre, release at `toX`.
+struct BarMove: Equatable, Sendable {
+    let itemID: String
+    let fromX: Double
+    let toX: Double
+}
+
 /// The zones a Cmd-drop can land in, left to right:
 /// `Always Hidden ‹ separator ‹ Hidden ‹ separator ‹ Visible`.
 ///
-/// Assignments are the only source of truth. The bar is read only to place
-/// a drop; BetterBar never moves an icon. Which separator is which does not
-/// matter: only their order on the bar.
+/// Assignments are the only source of truth. The bar is read to place a
+/// drop, and to put a brand-new icon in the Visible zone once (macOS adds
+/// it at the far left); otherwise BetterBar never moves an icon. Which
+/// separator is which does not matter: only their order on the bar.
 enum BarLayout {
     /// The zone a horizontal position falls in, given the separators'
     /// centres; nil unless there are exactly two.
@@ -50,6 +58,40 @@ enum BarLayout {
         guard let icon = icons.min(by: { abs($0.midX - dropX) < abs($1.midX - dropX) }) else { return nil }
         return zone(atX: icon.midX, separatorMidXs: separatorMidXs(items))
     }
+
+    /// The next drag putting a newly seen Visible icon of one of `owners`
+    /// right after the separator that starts the Visible zone, or nil when
+    /// there is none left. Only Visible icons are moved: an app that already
+    /// has a section was placed by the user.
+    ///
+    /// Observed on macOS 27: while an icon is dragged, it passes a neighbour
+    /// once the pointer crosses that neighbour's centre, measured where the
+    /// neighbour stood before the drag. So releasing halfway between two
+    /// centres inserts the icon between those two items. Moving the
+    /// rightmost icon first keeps an app's icons in their order.
+    static func placementMove(_ items: [BarItem], owners: Set<String>, skipping skipped: Set<String> = []) -> BarMove? {
+        let ordered = items.sorted { $0.midX < $1.midX }
+        guard let right = ordered.last(where: { $0.kind == .separator }),
+              ordered.filter({ $0.kind == .separator }).count == 2
+        else { return nil }
+        let seps = separatorMidXs(ordered)
+        let misplaced = ordered.filter { item in
+            owners.contains(item.owner) && item.kind == .icon(.visible) && !skipped.contains(item.id)
+                && zone(atX: item.midX, separatorMidXs: seps) != .visible
+        }
+        guard let item = misplaced.last else { return nil }
+        let others = ordered.filter { $0.id != item.id }
+        let toX: Double
+        if let next = others.first(where: { $0.midX > right.midX }) {
+            toX = (right.midX + next.midX) / 2
+        } else {
+            toX = right.midX + edgeMargin
+        }
+        return BarMove(itemID: item.id, fromX: item.midX, toX: toX)
+    }
+
+    /// Past the last item, any point beyond its centre will do.
+    private static let edgeMargin: Double = 8
 
     /// A press only becomes a drag past this distance, so a Cmd-click
     /// reveals nothing.

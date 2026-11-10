@@ -4,7 +4,7 @@ Gestionnaire de la barre des menus pour macOS 27. Les icônes sont réparties en
 
 ## Utilisation
 
-- **⌘-glisser une icône** affiche les séparateurs et affecte son app à la section où tu la déposes. Toutes les icônes d’une même app sont masquées ou affichées ensemble. BetterBar ne déplace jamais les icônes : leur ordre reste le tien, et un déplacement sans ⌘ ne change pas la section.
+- **⌘-glisser une icône** affiche les séparateurs et affecte son app à la section où tu la déposes. Toutes les icônes d’une même app sont masquées ou affichées ensemble. BetterBar ne déplace pas les icônes : leur ordre reste le tien, et un déplacement sans ⌘ ne change pas la section. Seule exception : macOS ajoute toute nouvelle icône tout à gauche, dans la zone Toujours masqué ; BetterBar la ⌘-glisse une seule fois juste après les séparateurs, dans la zone Visible, pour qu’elle ne passe pas à gauche des sections révélées.
 - **Cliquer dans un espace vide** affiche ou masque la section Masqué. **⌥-cliquer** affiche ou masque toutes les sections.
 - Le deuxième clic d’un double clic (et les suivants) est ignoré : le premier clic agit normalement. En dehors d’un ⌘-glisser, seul **⌥-clic** révèle la section Toujours masqué.
 - **Cliquer droit dans un espace vide** ouvre le menu Réglages et Quitter.

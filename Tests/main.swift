@@ -133,6 +133,30 @@ check(BarLayout.droppedSection([icon("a", 100), sep("L", 150)], owner: "a", drop
 let apple = BarItem(id: "clock", owner: "com.apple.MenuBarAgent", kind: .fixed, minX: 90, maxX: 110)
 check(BarLayout.droppedSection([apple, sep("L", 150), sep("R", 200)], owner: "com.apple.MenuBarAgent", dropX: 100) == nil, "Apple's items get no section")
 
+// New icons: macOS adds them at the far left, in the Always Hidden zone.
+let newIcon = [icon("new", 80), sep("L", 150), sep("R", 150), icon("v", 200), icon("w", 230)]
+let placement = BarLayout.placementMove(newIcon, owners: ["new"])
+check(placement == BarMove(itemID: "new", fromX: 80, toX: 175), "new icon goes right after the separators")
+check(BarLayout.placementMove(newIcon, owners: ["v"]) == nil, "an icon already in its zone is not moved")
+check(BarLayout.placementMove([icon("h", 80, .hidden), sep("L", 150), sep("R", 200)], owners: ["h"]) == nil,
+      "an app with a section is never moved")
+check(BarLayout.placementMove(newIcon, owners: ["new"], skipping: ["new"]) == nil, "a stuck icon is given up on")
+check(BarLayout.placementMove([icon("new", 80), sep("L", 150)], owners: ["new"]) == nil, "missing separator")
+check(BarLayout.placementMove([icon("new", 80), sep("L", 150), sep("R", 160)], owners: ["new"])?.toX == 168,
+      "no icon after the separators")
+let twoNew = [icon("n1", 60, owner: "multi"), icon("n2", 90, owner: "multi"), sep("L", 150), sep("R", 170), icon("v", 210)]
+check(BarLayout.placementMove(twoNew, owners: ["multi"])?.itemID == "n2", "rightmost icon first keeps an app's order")
+
+// MARK: Placement memory (isolated domain)
+
+let placedDomain = "com.yohan.betterbar.placed-tests.\(UUID().uuidString)"
+let placedDefaults = UserDefaults(suiteName: placedDomain)!
+let placedPrefs = Preferences(defaults: placedDefaults)
+placedPrefs.markPlaced(["com.a"])
+placedPrefs.setSection(.hidden, for: app("com.b"))
+check(Preferences(defaults: placedDefaults).placedApps == ["com.a", "com.b"], "placed apps persist, a Cmd-drop places")
+placedDefaults.removePersistentDomain(forName: placedDomain)
+
 // MARK: Reveal pacing
 
 check(RestrictionPlanner.conceals(from: nil, to: ["a"]), "restricting an unrestricted bar conceals")

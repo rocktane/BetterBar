@@ -28,6 +28,8 @@ final class SectionController {
 
     /// Called after every state change, for the auto-hide clock.
     @ObservationIgnored var onStateChange: ((RevealState) -> Void)?
+    /// Called when the apps owning icons change (a launch, a new icon).
+    @ObservationIgnored var onAppsChange: (() -> Void)?
 
     init(preferences: Preferences) {
         self.preferences = preferences
@@ -134,8 +136,10 @@ final class SectionController {
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 guard let self else { return }
-                if found != self.apps { self.apps = Self.merge(found, keepingConcealedFrom: self.apps, assignments: self.preferences.assignments) }
+                let changed = found != self.apps
+                if changed { self.apps = Self.merge(found, keepingConcealedFrom: self.apps, assignments: self.preferences.assignments) }
                 self.apply()
+                if changed { self.onAppsChange?() }
             }
         }
     }
