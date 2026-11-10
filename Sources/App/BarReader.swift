@@ -1,14 +1,15 @@
 import AppKit
 
 /// Reads the status area through Accessibility, to find out which zone a
-/// Cmd-dropped icon landed in. It never moves anything: the order of the
-/// icons is the user's.
+/// Cmd-dropped icon landed in, or where a brand-new icon was added.
 ///
 /// Only icons MenuBarAgent currently draws are read: a concealed icon has a
 /// stale frame.
 @MainActor
 final class BarReader {
     private let sections: SectionController
+    /// Vertical centre of each item of the last read, for synthetic drags.
+    private(set) var midY: [String: Double] = [:]
 
     init(sections: SectionController) {
         self.sections = sections
@@ -33,12 +34,17 @@ final class BarReader {
     private func items() async -> [BarItem] {
         let raw = await Task.detached(priority: .userInitiated) { Inventory.statusItems() }.value
         let ownPID = ProcessInfo.processInfo.processIdentifier
+        // A restriction may conceal the separators too: their frames are
+        // then stale.
+        let separatorsDrawn = sections.isDisplayed(.current)
         var result: [BarItem] = []
+        var midY: [String: Double] = [:]
         for status in raw {
             guard let process = NSRunningApplication(processIdentifier: status.pid) else { continue }
             let key = Self.key(of: process)
             let kind: BarItem.Kind
             if status.pid == ownPID {
+                guard separatorsDrawn else { continue }
                 kind = .separator
             } else if Self.isApple(process) {
                 kind = .fixed
@@ -46,9 +52,12 @@ final class BarReader {
                 guard sections.isDisplayed(process) else { continue }
                 kind = .icon(sections.preferences.section(for: key))
             }
-            result.append(BarItem(id: "\(status.pid):\(status.index)", owner: key, kind: kind,
+            let id = "\(status.pid):\(status.index)"
+            result.append(BarItem(id: id, owner: key, kind: kind,
                                   minX: Double(status.frame.minX), maxX: Double(status.frame.maxX)))
+            midY[id] = Double(status.frame.midY)
         }
+        self.midY = midY
         return result.sorted { $0.minX < $1.minX }
     }
 

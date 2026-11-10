@@ -2,8 +2,9 @@ import AppKit
 import os
 
 /// Global input around the menu bar: clicks on empty space, Cmd-drags of
-/// icons, and the auto-hide clock. BetterBar never moves an icon itself: a
-/// Cmd-drop only tells which section the user chose for the app.
+/// icons, and the auto-hide clock. A Cmd-drop only tells which section the
+/// user chose for the app; BetterBar moves an icon itself only once, when
+/// it is new (see `IconPlacer`).
 @MainActor
 final class MenuBarWatcher {
     private static let log = Logger(subsystem: "com.yohan.betterbar", category: "input")
@@ -11,6 +12,7 @@ final class MenuBarWatcher {
     private let preferences: Preferences
     private let separators = Separators()
     private let reader: BarReader
+    private let placer: IconPlacer
     private let showContextMenu: (NSPoint) -> Void
 
     private var monitors: [Any] = []
@@ -36,6 +38,7 @@ final class MenuBarWatcher {
         self.preferences = preferences
         self.showContextMenu = showContextMenu
         reader = BarReader(sections: sections)
+        placer = IconPlacer(sections: sections, reader: reader)
     }
 
     func start() {
@@ -49,6 +52,8 @@ final class MenuBarWatcher {
             return event
         }) { monitors.append(local) }
         sections.onStateChange = { [weak self] state in self?.stateChanged(state) }
+        sections.onInventory = { [weak self] in self?.placer.placeNewIcons() }
+        placer.placeNewIcons()
     }
 
     func stop() {
@@ -61,6 +66,8 @@ final class MenuBarWatcher {
     // MARK: Events
 
     private func handle(_ event: NSEvent) {
+        // BetterBar's own drags, while placing a new icon.
+        if IconPlacer.isOwnEvent(event) { return }
         // Global and local monitors can both see one event.
         if let last = lastHandledEvent, last == (event.timestamp, event.type) { return }
         lastHandledEvent = (event.timestamp, event.type)
@@ -211,7 +218,7 @@ final class MenuBarWatcher {
         clock.delay = preferences.effectiveAutoHideDelay
         let pressing = press != nil, inBar = MenuBarGeometry.isInMenuBar(NSEvent.mouseLocation)
         let buttons = NSEvent.pressedMouseButtons != 0, menuOpen = MenuBarGeometry.isIconMenuOpen()
-        let busy = pressing || inBar || buttons || menuOpen || sections.isHolding
+        let busy = pressing || inBar || buttons || menuOpen || sections.isHolding || placer.isPlacing
         if busy != lastBusy {
             lastBusy = busy
             Self.log.debug("auto-hide busy=\(busy, privacy: .public) press=\(pressing, privacy: .public) bar=\(inBar, privacy: .public) buttons=\(buttons, privacy: .public) menu=\(menuOpen, privacy: .public)")

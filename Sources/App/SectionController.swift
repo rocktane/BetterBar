@@ -25,9 +25,13 @@ final class SectionController {
     @ObservationIgnored private var retryCount = 0
     @ObservationIgnored private var lastReveal: ContinuousClock.Instant?
     @ObservationIgnored private var deferredApply: Task<Void, Never>?
+    @ObservationIgnored private var refreshTimer: Timer?
 
     /// Called after every state change, for the auto-hide clock.
     @ObservationIgnored var onStateChange: ((RevealState) -> Void)?
+    /// Called after every inventory scan (launches, quits, every 30 s), so
+    /// that a new icon, or one that could not be read last time, is placed.
+    @ObservationIgnored var onInventory: (() -> Void)?
 
     init(preferences: Preferences) {
         self.preferences = preferences
@@ -55,9 +59,18 @@ final class SectionController {
             await MainActor.run { self.installedIDs = ids; self.apply() }
         }
         refresh()
+        // An app can add an icon long after its launch: look again now and
+        // then. A scan is one Accessibility query per app, off the main thread.
+        let timer = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        refreshTimer = timer
     }
 
     func stop() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
         observers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
         observers.removeAll()
         deferredApply?.cancel()
@@ -136,6 +149,7 @@ final class SectionController {
                 guard let self else { return }
                 if found != self.apps { self.apps = Self.merge(found, keepingConcealedFrom: self.apps, assignments: self.preferences.assignments) }
                 self.apply()
+                self.onInventory?()
             }
         }
     }
