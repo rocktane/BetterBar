@@ -75,6 +75,21 @@ check(RestrictionPlanner.allowList(state: .hiddenShown, assignments: ["com.h": .
       "no Always Hidden app running, nothing held while Hidden shown")
 check(RestrictionPlanner.allowList(state: .collapsed, assignments: ["com.gone": .hidden], running: running, knownBundleIDs: ["com.gone"]) == nil,
       "concealed app not running, nothing held")
+// The separators are concealed with the sections, so that MenuBarAgent
+// cannot record them next to each other while the Hidden icons are away.
+let own = "com.yohan.betterbar"
+let withSeparators = RestrictionPlanner.allowList(state: .collapsed, assignments: assignments, running: running + [app(own)],
+                                                  knownBundleIDs: [own], separatorOwner: own)
+check(withSeparators?.contains(own) == false, "separators concealed while collapsed, even though running and installed")
+check(withSeparators?.contains("com.a") == true, "visible apps still allowed with the separators concealed")
+check(RestrictionPlanner.allowList(state: .hiddenShown, assignments: assignments, running: running + [app(own)],
+                                   knownBundleIDs: [], separatorOwner: own)?.contains(own) == false,
+      "separators concealed while only Always Hidden is")
+check(RestrictionPlanner.allowList(state: .allShown, assignments: assignments, running: running,
+                                   knownBundleIDs: [], separatorOwner: own) == nil, "all shown still releases")
+check(RestrictionPlanner.allowList(state: .collapsed, assignments: [:], running: running,
+                                   knownBundleIDs: [], separatorOwner: own) == nil,
+      "concealing the separators alone never holds a restriction")
 let known = RestrictionPlanner.allowList(state: .collapsed, assignments: ["com.h": .hidden], running: running, knownBundleIDs: ["com.h"])
 check(known?.contains("com.h") == false, "a known bundle id never overrides concealment")
 

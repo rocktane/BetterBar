@@ -185,7 +185,8 @@ final class SectionController {
             state: isHolding ? .allShown : state,
             assignments: preferences.assignments,
             running: runningProcesses(),
-            knownBundleIDs: installedIDs
+            knownBundleIDs: installedIDs,
+            separatorOwner: Bundle.main.bundleIdentifier
         )
         let current = restriction.isActive ? restriction.allowed : nil
         // Concealing icons still fading in would hide the sections one

@@ -121,11 +121,21 @@ enum RestrictionPlanner {
     /// installed apps, previously seen apps) minus the concealed ones, so
     /// an app launched while collapsed shows up immediately instead of
     /// waiting for the next refresh.
+    ///
+    /// BetterBar's own separators (`separatorOwner`) are concealed whenever
+    /// a restriction is held. Observed on macOS 27: when MenuBarAgent
+    /// records the bar again (after a drag, or when a new app's icon first
+    /// appears), it rewrites the place of every drawn item from the bar as
+    /// drawn, and keeps the old place of concealed ones. A separator left
+    /// drawn while the Hidden icons are concealed is recorded right next to
+    /// the other one, and those icons come back left of both: in the Always
+    /// Hidden zone. Concealed with them, the separators keep their place.
     static func allowList(
         state: RevealState,
         assignments: [String: BarSection],
         running: [MenuBarApp],
-        knownBundleIDs: Set<String>
+        knownBundleIDs: Set<String>,
+        separatorOwner: String? = nil
     ) -> Set<String>? {
         let concealedSections = state.concealedSections
         guard !concealedSections.isEmpty else { return nil }
@@ -139,6 +149,7 @@ enum RestrictionPlanner {
         var allowed = knownBundleIDs.union(SystemHosts.bundleIDs)
         for app in running { if let id = app.bundleID { allowed.insert(id) } }
         allowed.subtract(concealedKeys)
+        if let separatorOwner { allowed.remove(separatorOwner) }
         return allowed
     }
 }
