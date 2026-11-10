@@ -154,6 +154,12 @@ check(BarLayout.placementMove([icon("v", 100), icon("new", 200)], owners: ["new"
       "separators concealed: already right of a Visible icon")
 check(BarLayout.placementMove([icon("new", 80), icon("h", 120, .hidden)], owners: ["new"]) == nil,
       "separators concealed, no Visible icon to anchor to")
+check(BarLayout.misplaced([icon("new", 80), icon("h", 120, .hidden)], owners: ["new"]) == nil,
+      "no anchor: the bar cannot tell, the app is not recorded as placed")
+check(BarLayout.misplaced([icon("new", 80), sep("L", 150)], owners: ["new"]) == nil,
+      "one separator read: the bar cannot tell")
+check(BarLayout.misplaced([sep("L", 150), sep("R", 150), icon("new", 175)], owners: ["new"])?.icons.isEmpty == true,
+      "already in the Visible zone: known and in place")
 check(BarLayout.placementMove([icon("new", 80), sep("L", 150), sep("R", 160)], owners: ["new"])?.toX == 168,
       "no icon after the separators")
 let twoNew = [icon("n1", 60, owner: "multi"), icon("n2", 90, owner: "multi"), sep("L", 150), sep("R", 170), icon("v", 210)]

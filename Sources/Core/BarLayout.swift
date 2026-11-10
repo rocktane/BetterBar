@@ -77,34 +77,36 @@ enum BarLayout {
     /// centres inserts the icon between those two items. Moving the
     /// rightmost icon first keeps an app's icons in their order.
     static func placementMove(_ items: [BarItem], owners: Set<String>, skipping skipped: Set<String> = []) -> BarMove? {
-        let ordered = items.sorted { $0.midX < $1.midX }
-        let movable = ordered.filter { owners.contains($0.owner) && $0.kind == .icon(.visible) && !skipped.contains($0.id) }
-        let anchor: BarItem
-        let misplaced: [BarItem]
-        let seps = separatorMidXs(ordered)
-        if seps.count == 2, let right = ordered.last(where: { $0.kind == .separator }) {
-            anchor = right
-            misplaced = movable.filter { zone(atX: $0.midX, separatorMidXs: seps) != .visible }
-        } else if seps.isEmpty {
-            let concealable = ordered.filter { if case .icon(let section) = $0.kind { section != .visible } else { false } }
-            let edge = concealable.last?.midX ?? -.infinity
-            guard let first = ordered.first(where: {
-                $0.kind == .icon(.visible) && !owners.contains($0.owner) && $0.midX > edge
-            }) else { return nil }
-            anchor = first
-            misplaced = movable.filter { $0.midX < first.midX }
-        } else {
-            return nil
-        }
-        guard let item = misplaced.last else { return nil }
-        let others = ordered.filter { $0.id != item.id }
+        guard let layout = misplaced(items, owners: owners),
+              let item = layout.icons.last(where: { !skipped.contains($0.id) })
+        else { return nil }
+        let others = items.sorted { $0.midX < $1.midX }.filter { $0.id != item.id }
         let toX: Double
-        if let next = others.first(where: { $0.midX > anchor.midX }) {
-            toX = (anchor.midX + next.midX) / 2
+        if let next = others.first(where: { $0.midX > layout.anchor.midX }) {
+            toX = (layout.anchor.midX + next.midX) / 2
         } else {
-            toX = anchor.midX + edgeMargin
+            toX = layout.anchor.midX + edgeMargin
         }
         return BarMove(itemID: item.id, fromX: item.midX, toX: toX)
+    }
+
+    /// The Visible icons of `owners` outside the Visible zone, left to right,
+    /// and the item they go right after; nil when the bar cannot tell (one
+    /// separator, or separators concealed and no Visible icon to go by).
+    static func misplaced(_ items: [BarItem], owners: Set<String>) -> (anchor: BarItem, icons: [BarItem])? {
+        let ordered = items.sorted { $0.midX < $1.midX }
+        let movable = ordered.filter { owners.contains($0.owner) && $0.kind == .icon(.visible) }
+        let seps = separatorMidXs(ordered)
+        if seps.count == 2, let right = ordered.last(where: { $0.kind == .separator }) {
+            return (right, movable.filter { zone(atX: $0.midX, separatorMidXs: seps) != .visible })
+        }
+        guard seps.isEmpty else { return nil }
+        let concealable = ordered.filter { if case .icon(let section) = $0.kind { section != .visible } else { false } }
+        let edge = concealable.last?.midX ?? -.infinity
+        guard let first = ordered.first(where: {
+            $0.kind == .icon(.visible) && !owners.contains($0.owner) && $0.midX > edge
+        }) else { return nil }
+        return (first, movable.filter { $0.midX < first.midX })
     }
 
     /// Past the last item, any point beyond its centre will do.

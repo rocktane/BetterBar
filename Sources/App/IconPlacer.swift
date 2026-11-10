@@ -102,6 +102,9 @@ final class IconPlacer {
             if next == items { stuck.insert(move.itemID) }
             items = next
         }
+        // The bar could not tell where the icons belong (a separator not
+        // read, no Visible icon to go by): look again on the next scan.
+        guard BarLayout.misplaced(items, owners: placed) != nil else { return }
         // One attempt per app: whatever happens next is the user's choice.
         sections.preferences.markPlaced(placed)
     }
@@ -114,14 +117,10 @@ final class IconPlacer {
     /// The user pressed the left button during a placement and has not
     /// released it: their own release ends the drag, never a synthetic one.
     private var userHoldsButton = false
-    /// The user pressed or released a modifier during a placement: the
-    /// synthetic Command state is theirs to end.
-    private var userTouchedModifiers = false
 
     private func startWatchingInput() {
         interrupted = false
         userHoldsButton = false
-        userTouchedModifiers = false
         let mask: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseUp, .rightMouseDown, .otherMouseDown, .mouseMoved,
                                            .leftMouseDragged, .rightMouseDragged, .scrollWheel, .keyDown, .flagsChanged]
         let handler: (NSEvent) -> Void = { [weak self] event in
@@ -133,7 +132,6 @@ final class IconPlacer {
                 self.interrupted = true
                 if type == .leftMouseDown { self.userHoldsButton = true }
                 if type == .leftMouseUp { self.userHoldsButton = false }
-                if type == .flagsChanged { self.userTouchedModifiers = true }
             }
         }
         if let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: handler) { inputMonitors.append(global) }
@@ -183,12 +181,15 @@ final class IconPlacer {
             event.post(tap: .cgSessionEventTap)
         }
         /// Even there, the session keeps Command down after the drag:
-        /// release it, unless the user has been using modifiers meanwhile.
+        /// release it, keeping the modifiers the user physically holds,
+        /// unless they hold Command themselves (their release ends it).
         func releaseCommand() {
-            guard !userTouchedModifiers,
+            let physical = CGEventSource.flagsState(.hidSystemState)
+                .intersection([.maskShift, .maskControl, .maskAlternate, .maskCommand])
+            guard !physical.contains(.maskCommand),
                   let event = CGEvent(keyboardEventSource: source, virtualKey: 0x37, keyDown: false)
             else { return }
-            event.flags = []
+            event.flags = physical
             event.setIntegerValueField(.eventSourceUserData, value: Self.eventTag)
             event.post(tap: .cgSessionEventTap)
         }
