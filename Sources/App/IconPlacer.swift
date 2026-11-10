@@ -100,14 +100,24 @@ final class IconPlacer {
     private var inputMonitors: [Any] = []
     /// Set by any physical input while placing: the drag stops at once.
     private var interrupted = false
+    /// The user pressed the left button during a placement and has not
+    /// released it: their own release ends the drag, never a synthetic one.
+    private var userHoldsButton = false
 
     private func startWatchingInput() {
         interrupted = false
-        let mask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown, .mouseMoved,
+        userHoldsButton = false
+        let mask: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseUp, .rightMouseDown, .otherMouseDown, .mouseMoved,
                                            .leftMouseDragged, .rightMouseDragged, .scrollWheel, .keyDown, .flagsChanged]
         let handler: (NSEvent) -> Void = { [weak self] event in
             guard !Self.isOwnEvent(event) else { return }
-            MainActor.assumeIsolated { self?.interrupted = true }
+            let type = event.type
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.interrupted = true
+                if type == .leftMouseDown { self.userHoldsButton = true }
+                if type == .leftMouseUp { self.userHoldsButton = false }
+            }
         }
         if let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: handler) { inputMonitors.append(global) }
         if let local = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { handler($0); return $0 }) { inputMonitors.append(local) }
@@ -165,8 +175,11 @@ final class IconPlacer {
         }
         if !interrupted { await pause(80) }
         // Interrupted: release where the user has the pointer, never pull
-        // it back to the drag's last step.
-        if interrupted, let here = CGEvent(source: nil)?.location {
+        // it back to the drag's last step, and not at all while the user
+        // holds the button: their release ends it.
+        if userHoldsButton {
+            // Nothing to post.
+        } else if interrupted, let here = CGEvent(source: nil)?.location {
             post(.leftMouseUp, at: here)
         } else {
             post(.leftMouseUp, x: x)
