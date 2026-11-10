@@ -37,7 +37,9 @@ final class IconPlacer {
     }
 
     /// Checks the apps never seen before. Cheap when there are none: the bar
-    /// is read only for a new app.
+    /// is read only for a new app. Called after every inventory scan, so an
+    /// icon that could not be read (not drawn yet, a slow Accessibility
+    /// reply) is looked at again on the next one.
     func placeNewIcons() {
         guard !isPlacing else { pending = true; return }
         guard AXIsProcessTrusted(), !candidates().isEmpty else { return }

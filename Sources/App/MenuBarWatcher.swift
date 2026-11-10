@@ -52,7 +52,7 @@ final class MenuBarWatcher {
             return event
         }) { monitors.append(local) }
         sections.onStateChange = { [weak self] state in self?.stateChanged(state) }
-        sections.onAppsChange = { [weak self] in self?.placer.placeNewIcons() }
+        sections.onInventory = { [weak self] in self?.placer.placeNewIcons() }
         placer.placeNewIcons()
     }
 
